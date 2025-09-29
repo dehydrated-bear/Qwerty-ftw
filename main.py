@@ -81,7 +81,7 @@ class FRAClaim(db.Model):
     gps_addr = db.Column(db.String(255))
     level = db.Column(db.String(255))
     remark = db.Column(db.String(255))
-    approved=db.Column(db.Boolean(default=False))
+    approved=db.Column(db.Boolean(),default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 # --- Helper function for role-based tables ---
