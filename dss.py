@@ -45,6 +45,8 @@ LULC_CODE_MAP = {
 
 def fetch_lulc_data(distcode: str, token: str, year: str = "1112") -> Dict[str, float]:
     """
+    LAND USE LAND COVER
+    
     Fetch LULC data for given district.
     """
     url = f"https://bhuvan-app1.nrsc.gov.in/api/lulc/curljson.php?distcode={distcode}&year={year}&token={token}"
@@ -58,7 +60,7 @@ def fetch_lulc_data(distcode: str, token: str, year: str = "1112") -> Dict[str, 
         # Normalize values
         lulc_areas = {}
         for code in LULC_CODE_MAP.keys():
-            val =host are online. data.get(code, "0")
+            val = data.get(code, "0")
             try:
                 lulc_areas[code] = float(str(val).strip())
             except ValueError:

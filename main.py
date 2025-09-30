@@ -2,29 +2,35 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_restful import Api, Resource
 from flask_jwt_extended import (
-    JWTManager, create_access_token, jwt_required,
-    get_jwt_identity, get_jwt
+    JWTManager, create_access_token, jwt_required
 )
 from datetime import datetime, timedelta
 from flask_cors import CORS
-import os
+from pathlib import Path
+
+# --- DSS imports ---
+from dss import (
+    fetch_lulc_data,
+    get_claims_for_district,
+    check_scheme_eligibility,
+    summarize_scheme_eligibility,
+    get_aoi_lulc_stats
+)
 
 # --- Flask App Config ---
 app = Flask(__name__)
 CORS(app)
 
-# Use SQLite for now (easy for testing)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///fra.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["JWT_SECRET_KEY"] = "super-secret"  # change in production
+app.config["JWT_SECRET_KEY"] = "super-secret"  # ⚠️ Change in production
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
 
 db = SQLAlchemy(app)
 api = Api(app)
 jwt = JWTManager(app)
 
-
-# --- Models with relationships ---
+# --- Models ---
 class DLC(db.Model):
     __tablename__ = "dlc"
     id = db.Column(db.Integer, primary_key=True)
@@ -33,10 +39,7 @@ class DLC(db.Model):
     email = db.Column(db.String(150), unique=True)
     phone = db.Column(db.String(20))
     password = db.Column(db.String(255))
-
-    # One DLC can have many SDLCs
     sdlcs = db.relationship("SDLC", backref="dlc", cascade="all, delete-orphan")
-
 
 class SDLC(db.Model):
     __tablename__ = "sdlc"
@@ -46,12 +49,8 @@ class SDLC(db.Model):
     email = db.Column(db.String(150), unique=True)
     phone = db.Column(db.String(20))
     password = db.Column(db.String(255))
-
     dlc_id = db.Column(db.Integer, db.ForeignKey("dlc.id"), nullable=False)
-    
-    # One SDLC can have many Gram Sabhas
     gram_sabhas = db.relationship("GRAM_SABHA", backref="sdlc", cascade="all, delete-orphan")
-
 
 class GRAM_SABHA(db.Model):
     __tablename__ = "gram_sabha"
@@ -61,15 +60,13 @@ class GRAM_SABHA(db.Model):
     email = db.Column(db.String(150), unique=True)
     phone = db.Column(db.String(20))
     password = db.Column(db.String(255))
-
     sdlc_id = db.Column(db.Integer, db.ForeignKey("sdlc.id"), nullable=False)
-
 
 class FRAClaim(db.Model):
     __tablename__ = "fra_claims"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     source_file = db.Column(db.String(255))
-    holder_id = db.Column(db.Integer, autoincrement = True)
+    holder_id = db.Column(db.Integer)
     address = db.Column(db.String(255))
     village_details = db.Column(db.String(255), nullable=True)
     khasara_no = db.Column(db.String(255))
@@ -82,44 +79,33 @@ class FRAClaim(db.Model):
     longitude = db.Column(db.String(255))
     level = db.Column(db.String(255))
     remark = db.Column(db.String(255))
-    approved=db.Column(db.Boolean(),default=False)
+    approved = db.Column(db.Boolean(), default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-# --- Helper function for role-based tables --- 
 
+# --- Helper ---
 def get_user_model(role):
-    if role == "dlc":
-        return DLC
-    elif role == "sdlc":
-        return SDLC
-    elif role == "gram_sabha":
-        return GRAM_SABHA
-    else:
-        return None
+    return {"dlc": DLC, "sdlc": SDLC, "gram_sabha": GRAM_SABHA}.get(role)
 
-
-# --- Resources (API Endpoints) ---
+# --- Auth Resources ---
 class Register(Resource):
     def post(self, role):
         data = request.get_json()
         model = get_user_model(role)
         if not model:
             return {"msg": "Invalid role"}, 400
-
         if model.query.filter_by(email=data["email"]).first():
             return {"msg": "User already exists"}, 400
-
         user = model(
             f_name=data.get("f_name"),
             l_name=data.get("l_name"),
             email=data["email"],
             phone=data.get("phone"),
-            password=data["password"],  # ⚠️ hash in production
+            password=data["password"]
         )
         db.session.add(user)
         db.session.commit()
         return {"msg": "User registered successfully"}, 201
-
 
 class Login(Resource):
     def post(self, role):
@@ -127,72 +113,123 @@ class Login(Resource):
         model = get_user_model(role)
         if not model:
             return {"msg": "Invalid role"}, 400
-
         user = model.query.filter_by(email=data["email"]).first()
         if not user or user.password != data["password"]:
             return {"msg": "Invalid credentials"}, 401
+        token = create_access_token(identity=user.email, additional_claims={"role": role})
+        return {"access_token": token}, 200
 
-        # FIX: identity must be string, role in additional_claims
-        access_token = create_access_token(
-            identity=user.email,
-            additional_claims={"role": role}
-        )
-        return {"access_token": access_token}, 200
-
-
+# --- Claim Resources ---
 class AddClaim(Resource):
     @jwt_required()
     def post(self):
         data = request.get_json()
-        claim = FRAClaim(
-            source_file=data.get("source_file"),
-            holder_id=data.get("holder_id"),
-            address=data.get("address"),
-            village_details=data.get("village_details"),
-            khasara_no=data.get("khasara_no"),
-            land_area=data.get("land_area"),
-            purpose=data.get("purpose"),
-            caste_status=data.get("caste_status"),
-            forest_block_name=data.get("forest_block_name"),
-            compartment_no=data.get("compartment_no"),
-            gps_addr=data.get("gps_addr"),
-        )
+        claim = FRAClaim(**data)
         db.session.add(claim)
         db.session.commit()
-        return {"msg": "FRA Claim added successfully"}, 201
-
+        return {
+            "msg": "FRA Claim added successfully",
+            "claim": {
+                "id": claim.id,
+                "holder_id": claim.holder_id,
+                "address": claim.address,
+                "purpose": claim.purpose,
+                "land_area": claim.land_area,
+                "caste_status": claim.caste_status
+            }
+        }, 201
 
 class GetClaims(Resource):
     @jwt_required()
     def get(self):
         claims = FRAClaim.query.all()
-        return [{
-            "id": c.id,
-            "source_file": c.source_file,
-            "address": c.address,
-            "village_details": c.village_details,
-            "khasara_no": c.khasara_no,
-            "land_area": c.land_area,
-            "purpose": c.purpose,
-            "caste_status": c.caste_status,
-            "forest_block_name": c.forest_block_name,
-            "compartment_no": c.compartment_no,
-            "gps_addr": c.gps_addr,
-        } for c in claims], 200
+        result = []
+        for c in claims:
+            result.append({
+                "id": c.id,
+                "source_file": c.source_file,
+                "holder_id": c.holder_id,
+                "address": c.address,
+                "village_details": c.village_details,
+                "khasara_no": c.khasara_no,
+                "land_area": c.land_area,
+                "purpose": c.purpose,
+                "caste_status": c.caste_status,
+                "forest_block_name": c.forest_block_name,
+                "compartment_no": c.compartment_no,
+                "latitude": c.latitude,
+                "longitude": c.longitude,
+                "level": c.level,
+                "remark": c.remark,
+                "approved": c.approved,
+                "created_at": c.created_at.isoformat(),
+                "updated_at": c.updated_at.isoformat()
+            })
+        return jsonify(result)
 
+# --- DSS Endpoints ---
+class LULC(Resource):
+    @jwt_required()
+    def get(self, distcode="0831"):
+        token = "b142ff539f1f037ade84f273ce12b61aaf669b5b"
+        year = request.args.get("year", "1112")
+        data = fetch_lulc_data(distcode, token, year)
+        return jsonify(data)
+
+class DistrictClaims(Resource):
+    @jwt_required()
+    def get(self, district):
+        db_path = Path("fra.db")
+        claims = get_claims_for_district(db_path, district)
+        return jsonify(claims)
+
+class ClaimEligibility(Resource):
+    @jwt_required()
+    def get(self, claim_id):
+        db_path = Path("fra.db")
+        district = request.args.get("district", "बारां")
+        token = "b142ff539f1f037ade84f273ce12b61aaf669b5b"
+        distcode = request.args.get("distcode", "0831")
+        lulc_data = fetch_lulc_data(distcode, token)
+        claims = get_claims_for_district(db_path, district)
+        claim = next((c for c in claims if c["id"] == int(claim_id)), None)
+        if not claim:
+            return {"msg": "Claim not found"}, 404
+        eligibility = check_scheme_eligibility(claim, lulc_data)
+        return jsonify(eligibility)
+
+class DistrictEligibilitySummary(Resource):
+    @jwt_required()
+    def get(self, district):
+        db_path = Path("instance/fra.db")
+        token = "b142ff539f1f037ade84f273ce12b61aaf669b5b"
+        distcode = request.args.get("distcode", "0831")
+        lulc_data = fetch_lulc_data(distcode, token)
+        summary = summarize_scheme_eligibility(db_path, district, lulc_data)
+        return jsonify(summary)
+
+class AOILULC(Resource):
+    @jwt_required()
+    def post(self):
+        data = request.get_json()
+        geom = data.get("geom")
+        token = data.get("token")
+        result = get_aoi_lulc_stats(geom, token)
+        return jsonify(result)
 
 # --- Routes ---
 api.add_resource(Register, "/register/<string:role>")
 api.add_resource(Login, "/login/<string:role>")
 api.add_resource(AddClaim, "/claims")
 api.add_resource(GetClaims, "/claims/all")
-
+api.add_resource(LULC, "/lulc/<string:distcode>")
+api.add_resource(DistrictClaims, "/claims/district/<string:district>")
+api.add_resource(ClaimEligibility, "/eligibility/<int:claim_id>")
+api.add_resource(DistrictEligibilitySummary, "/eligibility/summary/<string:district>")
+api.add_resource(AOILULC, "/lulc/aoi")
 
 # --- Run App ---
 if __name__ == "__main__":
-    # Ensure DB and tables exist
     with app.app_context():
-        db.create_all()
-        print("Database and tables created (if not existed).")
-
+        db.create_all()  # ensures tables exist
     app.run(debug=True)
