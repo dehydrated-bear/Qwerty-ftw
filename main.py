@@ -69,7 +69,7 @@ class FRAClaim(db.Model):
     __tablename__ = "fra_claims"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     source_file = db.Column(db.String(255))
-    holder_id = db.Column(db.Integer)
+    holder_id = db.Column(db.Integer, autoincrement = True)
     address = db.Column(db.String(255))
     village_details = db.Column(db.String(255), nullable=True)
     khasara_no = db.Column(db.String(255))
@@ -78,7 +78,8 @@ class FRAClaim(db.Model):
     caste_status = db.Column(db.String(255))
     forest_block_name = db.Column(db.String(255))
     compartment_no = db.Column(db.String(255))
-    gps_addr = db.Column(db.String(255))
+    latitude = db.Column(db.String(255))
+    longitude = db.Column(db.String(255))
     level = db.Column(db.String(255))
     remark = db.Column(db.String(255))
     approved=db.Column(db.Boolean(),default=False)
