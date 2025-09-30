@@ -84,8 +84,7 @@ class FRAClaim(db.Model):
     approved=db.Column(db.Boolean(),default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-# --- Helper function for role-based tables ---
-
+# --- Helper function for role-based tables --- 
 
 def get_user_model(role):
     if role == "dlc":

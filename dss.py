@@ -58,7 +58,7 @@ def fetch_lulc_data(distcode: str, token: str, year: str = "1112") -> Dict[str, 
         # Normalize values
         lulc_areas = {}
         for code in LULC_CODE_MAP.keys():
-            val = data.get(code, "0")
+            val =host are online. data.get(code, "0")
             try:
                 lulc_areas[code] = float(str(val).strip())
             except ValueError:
@@ -231,8 +231,6 @@ if __name__ == "__main__":
 
     print("Fetching LULC data…")
     lulc_data = fetch_lulc_data(DISTRICT_CODE, TOKEN)
-
-    
 
     print("Summarizing scheme eligibility…")
     summary = summarize_scheme_eligibility(DB_PATH, DISTRICT_NAME, lulc_data)
