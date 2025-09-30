@@ -42,10 +42,10 @@ ___________
  claimant tracking
 
 ~dss 
-	claims ka data (district wise) , per person
-	polygon ke stats
-	kya scheme 
-	stats 
+claims ka data (district wise) , per person
+polygon ke stats
+kya scheme 
+stats 
 
 ~recent claims
 	particular areas
