@@ -1,54 +1,50 @@
-import requests
-import json
+import unittest
+from main import app
 
-BASE_URL = "http://127.0.0.1:5000"
+class AOILULCTest(unittest.TestCase):
+    def setUp(self):
+        self.app = app.test_client()
+        self.app.testing = True
 
-# --- Step 1: Login ---
-login_data = {
-    "email": "testuser@example.com",  # Replace with your test user
-    "password": "password123"
-}
+        # Login to get JWT token
+        login_resp = self.app.post("/login/dlc", json={
+            "email": "testuser@example.com",
+            "password": "password123"
+        })
+        self.token = login_resp.get_json().get("access_token")
+        self.assertIsNotNone(self.token, "JWT token not received from login")
 
-r = requests.post(f"{BASE_URL}/login/dlc", json=login_data)
-if r.status_code != 200:
-    raise Exception(f"Login failed: {r.status_code} {r.text}")
+    def test_aoi_lulc_endpoint(self):
+        geom_example = (
+            "POLYGON((77.537826049804 18.312927062987,"
+            "77.539885986327 18.279624755858,"
+            "77.596190917968 18.295417602538,"
+            "77.537826049804 18.312927062987))"
+        )
 
-token = r.json().get("access_token")
-headers = {"Authorization": f"Bearer {token}"}
+        resp = self.app.post(
+            "/lulc/aoi",
+            json={"geom": geom_example},
+            headers={"Authorization": f"Bearer {self.token}"}
+        )
 
-# --- Step 2: Fetch all claims to get latest claim ID ---
-r = requests.get(f"{BASE_URL}/claims/all", headers=headers)
-if r.status_code != 200:
-    raise Exception(f"Failed to fetch claims: {r.status_code} {r.text}")
+        print("Status code:", resp.status_code)
+        try:
+            print("Response JSON:", resp.get_json())
+        except Exception as e:
+            print("Failed to decode JSON:", e)
+            print("Raw response data:", resp.data.decode())
 
-try:
-    claims = r.json()
-except Exception:
-    print("Response is not valid JSON. Raw response:")
-    print(r.text)
-    claims = []
+        self.assertEqual(resp.status_code, 200, f"Unexpected status code: {resp.status_code}")
 
-if not claims:
-    raise Exception("No claims found. Add a claim first.")
+        data = resp.get_json()
+        self.assertIsInstance(data, dict, "Response should be a dictionary")
+        if data and "error" not in data:
+            for state_name, lulc_info in data.items():
+                self.assertIsInstance(lulc_info, dict, f"LULC info for {state_name} is not a dict")
+                for land_type, area in lulc_info.items():
+                    self.assertIsInstance(area, (int, float), f"Area for {land_type} is not numeric")
 
-# Use the latest claim
-claim_id = claims[-1]["id"]
 
-# --- Step 3: Fetch Claim Eligibility ---
-district = "बारां"
-distcode = "0831"
-
-r = requests.get(
-    f"{BASE_URL}/eligibility/{claim_id}?district={district}&distcode={distcode}",
-    headers=headers
-)
-
-print(f"\nStatus Code: {r.status_code}")
-
-try:
-    data = r.json()
-    print("Claim Eligibility:")
-    print(json.dumps(data, indent=2, ensure_ascii=False))
-except Exception:
-    print("Response is not valid JSON. Raw response:")
-    print(r.text)
+if __name__ == "__main__":
+    unittest.main()

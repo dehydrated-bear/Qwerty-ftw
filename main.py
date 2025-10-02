@@ -21,7 +21,13 @@ from dss import (
 app = Flask(__name__)
 CORS(app)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///fra.db"
+from pathlib import Path
+
+# --- Flask App Config ---
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "instance" / "fra.db"
+
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["JWT_SECRET_KEY"] = "super-secret"  # ⚠️ Change in production
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
@@ -179,14 +185,14 @@ class LULC(Resource):
 class DistrictClaims(Resource):
     @jwt_required()
     def get(self, district):
-        db_path = Path("fra.db")
+        db_path = Path("instance/fra.db")
         claims = get_claims_for_district(db_path, district)
         return jsonify(claims)
 
 class ClaimEligibility(Resource):
     @jwt_required()
     def get(self, claim_id):
-        db_path = Path("fra.db")
+        db_path = Path("instance/fra.db")
         district = request.args.get("district", "बारां")
         token = "b142ff539f1f037ade84f273ce12b61aaf669b5b"
         distcode = request.args.get("distcode", "0831")
@@ -213,7 +219,7 @@ class AOILULC(Resource):
     def post(self):
         data = request.get_json()
         geom = data.get("geom")
-        token = data.get("token")
+        token = "b142ff539f1f037ade84f273ce12b61aaf669b5b"
         result = get_aoi_lulc_stats(geom, token)
         return jsonify(result)
 
