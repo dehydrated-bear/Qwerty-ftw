@@ -174,12 +174,13 @@ class GetClaims(Resource):
         return jsonify(result)
 
 # --- DSS Endpoints ---
+# --- DSS Endpoints ---
 class LULC(Resource):
     @jwt_required()
     def get(self, distcode="0831"):
-        token = "b142ff539f1f037ade84f273ce12b61aaf669b5b"
+        DISTRICT_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new token
         year = request.args.get("year", "1112")
-        data = fetch_lulc_data(distcode, token, year)
+        data = fetch_lulc_data(distcode, DISTRICT_TOKEN, year)
         return jsonify(data)
 
 class DistrictClaims(Resource):
@@ -194,9 +195,9 @@ class ClaimEligibility(Resource):
     def get(self, claim_id):
         db_path = Path("instance/fra.db")
         district = request.args.get("district", "बारां")
-        token = "b142ff539f1f037ade84f273ce12b61aaf669b5b"
+        DISTRICT_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new token
         distcode = request.args.get("distcode", "0831")
-        lulc_data = fetch_lulc_data(distcode, token)
+        lulc_data = fetch_lulc_data(distcode, DISTRICT_TOKEN)
         claims = get_claims_for_district(db_path, district)
         claim = next((c for c in claims if c["id"] == int(claim_id)), None)
         if not claim:
@@ -208,9 +209,9 @@ class DistrictEligibilitySummary(Resource):
     @jwt_required()
     def get(self, district):
         db_path = Path("instance/fra.db")
-        token = "b142ff539f1f037ade84f273ce12b61aaf669b5b"
+        DISTRICT_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new token
         distcode = request.args.get("distcode", "0831")
-        lulc_data = fetch_lulc_data(distcode, token)
+        lulc_data = fetch_lulc_data(distcode, DISTRICT_TOKEN)
         summary = summarize_scheme_eligibility(db_path, district, lulc_data)
         return jsonify(summary)
 
@@ -219,10 +220,9 @@ class AOILULC(Resource):
     def post(self):
         data = request.get_json()
         geom = data.get("geom")
-        token = "b142ff539f1f037ade84f273ce12b61aaf669b5b"
-        result = get_aoi_lulc_stats(geom, token)
+        AOI_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new AOI token
+        result = get_aoi_lulc_stats(geom, AOI_TOKEN)
         return jsonify(result)
-
 # --- Routes ---
 api.add_resource(Register, "/register/<string:role>")
 api.add_resource(Login, "/login/<string:role>")

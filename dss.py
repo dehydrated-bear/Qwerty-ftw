@@ -45,8 +45,6 @@ LULC_CODE_MAP = {
 
 def fetch_lulc_data(distcode: str, token: str, year: str = "1112") -> Dict[str, float]:
     """
-    LAND USE LAND COVER
-    
     Fetch LULC data for given district.
     """
     url = f"https://bhuvan-app1.nrsc.gov.in/api/lulc/curljson.php?distcode={distcode}&year={year}&token={token}"
@@ -223,7 +221,7 @@ def get_aoi_lulc_stats(geom: str, token: str) -> Dict[str, Dict[str, Any]]:
 # --- Example usage ---
 if __name__ == "__main__":
     DB_PATH = Path(__file__).parent / "instance" / "fra.db"
-    TOKEN = "7f26fb328e484f3402d657e8f3e9b34e5696ce39"
+    TOKEN = "749046fc0b500459645e958b3a80eb86ba75e325"
     DISTRICT_CODE = "0831"  # Baran
     DISTRICT_NAME = "बारां"
 
@@ -233,6 +231,9 @@ if __name__ == "__main__":
 
     print("Fetching LULC data…")
     lulc_data = fetch_lulc_data(DISTRICT_CODE, TOKEN)
+    print(lulc_data)
+
+    
 
     print("Summarizing scheme eligibility…")
     summary = summarize_scheme_eligibility(DB_PATH, DISTRICT_NAME, lulc_data)
@@ -251,12 +252,10 @@ if __name__ == "__main__":
 
 
 
-    token1 = "b142ff539f1f037ade84f273ce12b61aaf669b5b"
+    token1 = "212f217e47242e11e4cee706764bbc23053f9008"
 
     geom_example = "POLYGON((77.537826049804 18.312927062987,77.539885986327 18.279624755858,77.596190917968 18.295417602538,77.537826049804 18.312927062987))"
 
     result = get_aoi_lulc_stats(geom_example, token1)
     from pprint import pprint
     pprint(result)
-
-
