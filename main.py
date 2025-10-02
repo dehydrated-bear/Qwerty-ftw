@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_restful import Api, Resource
 from flask_jwt_extended import (
-    JWTManager, create_access_token, jwt_required
+    JWTManager, create_access_token, jwt_required, get_jwt_identity, get_jwt
 )
 from datetime import datetime, timedelta
 from flask_cors import CORS
@@ -85,7 +85,9 @@ class FRAClaim(db.Model):
     longitude = db.Column(db.String(255))
     level = db.Column(db.String(255))
     remark = db.Column(db.String(255))
-    approved = db.Column(db.Boolean(), default=False)
+    dlc_approved = db.Column(db.Boolean, default=None)
+    sdlc_approved = db.Column(db.Boolean, default=None)
+    gram_sabha_approved = db.Column(db.Boolean, default=None)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -145,6 +147,11 @@ class AddClaim(Resource):
             }
         }, 201
 
+from flask import jsonify, request
+from flask_restful import Resource
+from flask_jwt_extended import jwt_required
+from main import FRAClaim
+
 class GetClaims(Resource):
     @jwt_required()
     def get(self):
@@ -167,11 +174,14 @@ class GetClaims(Resource):
                 "longitude": c.longitude,
                 "level": c.level,
                 "remark": c.remark,
-                "approved": c.approved,
-                "created_at": c.created_at.isoformat(),
-                "updated_at": c.updated_at.isoformat()
+                "gram_sabha_approved": c.gram_sabha_approved,
+                "sdlc_approved": c.sdlc_approved,
+                "dlc_approved": c.dlc_approved,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "updated_at": c.updated_at.isoformat() if c.updated_at else None
             })
         return jsonify(result)
+
 
 # --- DSS Endpoints ---
 # --- DSS Endpoints ---
@@ -223,6 +233,63 @@ class AOILULC(Resource):
         AOI_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new AOI token
         result = get_aoi_lulc_stats(geom, AOI_TOKEN)
         return jsonify(result)
+class ApproveClaim(Resource):
+    @jwt_required()
+    def post(self, claim_id):
+        """
+        Sequential approval workflow:
+        - Gram Sabha → SDLC → DLC
+        - Body: { "action": "approve" or "disapprove" }
+        """
+        user_email = get_jwt_identity()
+        role = get_jwt().get("role")  # dlc / sdlc / gram_sabha
+        if role not in ["dlc", "sdlc", "gram_sabha"]:
+            return {"msg": "Unauthorized role"}, 403
+
+        # Fetch claim
+        claim = FRAClaim.query.filter_by(id=claim_id).first()
+        if not claim:
+            return {"msg": "Claim not found"}, 404
+
+        # Validate action
+        action = request.json.get("action")
+        if action not in ["approve", "disapprove"]:
+            return {"msg": "Invalid action, must be 'approve' or 'disapprove'"}, 400
+
+        # Sequential approval enforcement
+        if role == "sdlc" and not claim.gram_sabha_approved:
+            return {"msg": "Cannot act, waiting for Gram Sabha approval"}, 403
+        if role == "dlc" and (not claim.gram_sabha_approved or not claim.sdlc_approved):
+            return {"msg": "Cannot act, waiting for previous approvals"}, 403
+
+        # If someone disapproves, stop further approvals
+        if action == "disapprove":
+            setattr(claim, f"{role}_approved", False)
+            claim.final_approved = False  # optional: mark as rejected
+            db.session.commit()
+            return {
+                "msg": f"Claim disapproved by {role.upper()}",
+                "claim_id": claim.id,
+                "status": False
+            }, 200
+
+        # Approve action
+        setattr(claim, f"{role}_approved", True)
+
+        # Check if all three approved → mark final approval
+        if claim.gram_sabha_approved and claim.sdlc_approved and claim.dlc_approved:
+            claim.final_approved = True
+
+        db.session.commit()
+
+        return {
+            "msg": f"Claim approved by {role.upper()}",
+            "claim_id": claim.id,
+            "status": getattr(claim, f"{role}_approved"),
+            "final_approved": getattr(claim, "final_approved", False)
+        }, 200
+
+
 # --- Routes ---
 api.add_resource(Register, "/register/<string:role>")
 api.add_resource(Login, "/login/<string:role>")
@@ -233,6 +300,7 @@ api.add_resource(DistrictClaims, "/claims/district/<string:district>")
 api.add_resource(ClaimEligibility, "/eligibility/<int:claim_id>")
 api.add_resource(DistrictEligibilitySummary, "/eligibility/summary/<string:district>")
 api.add_resource(AOILULC, "/lulc/aoi")
+api.add_resource(ApproveClaim,"/claims/<claim_id>/approve")
 
 # --- Run App ---
 if __name__ == "__main__":
