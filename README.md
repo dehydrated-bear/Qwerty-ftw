@@ -48,8 +48,16 @@ kya scheme ✔️
 stats ✔️
 
 ~recent claims
+
+
+3d map adding ✔️
+
+
 	particular areas ✔️
 
 ~schemes wise claimant list ::: TODO
+
+
+Chatbot ???!??? :::TODO
 
 	
