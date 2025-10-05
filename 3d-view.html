@@ -10,21 +10,39 @@
   />
   <style>
     html, body, #cesiumContainer {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
+      width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+    }
+    #controls {
+      position: absolute; top: 10px; left: 10px;
+      background: rgba(42,42,42,0.8); padding: 10px; border-radius: 4px;
+      color: white; font-family: sans-serif;
+      z-index: 1;
+    }
+    #controls button {
+      display: block; margin: 5px 0;
+      width: 80px; padding: 5px;
+      background: #5cb3cc; color: white; border: none; border-radius: 4px;
+      cursor: pointer;
+    }
+    #controls button:hover {
+      background: #4a9bb8;
     }
   </style>
 </head>
 <body>
   <div id="cesiumContainer"></div>
+  <div id="controls">
+    <button id="zoomIn">Zoom In</button>
+    <button id="zoomOut">Zoom Out</button>
+    <button id="north">North</button>
+    <button id="south">South</button>
+    <button id="east">East</button>
+    <button id="west">West</button>
+    <button id="reset">Reset View</button>
+  </div>
   <script type="module">
-    // Your Cesium Ion access token
     Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3ZDc1ZmYzZC04OTBiLTRjMDgtYjNkNS01OGI3NTM5OWEwZDgiLCJpZCI6MzQ3MzYyLCJpYXQiOjE3NTk2NDg1NDV9.JdxzpysL9B7md9PXBXuqhFAMLsEh2JknTgmwlCIyduc';
 
-    // Initialize the Cesium Viewer with terrain
     const viewer = new Cesium.Viewer('cesiumContainer', {
       terrain: Cesium.Terrain.fromWorldTerrain(),
       baseLayerPicker: false,
@@ -32,26 +50,77 @@
       animation: false,
     });
 
-    // Fly the camera to Baran, Rajasthan at approx. same height & angle
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(76.53, 25.10, 400),
-      orientation: {
-        heading: Cesium.Math.toRadians(0.0),
-        pitch: Cesium.Math.toRadians(-15.0),
-        roll: 0.0
-      }
-    });
+    // Initial camera view
+    const initialPosition = Cesium.Cartesian3.fromDegrees(76.53, 25.10, 400);
+    const initialOrientation = {
+      heading: Cesium.Math.toRadians(0),
+      pitch: Cesium.Math.toRadians(-15),
+      roll: 0
+    };
+    viewer.camera.setView({ destination: initialPosition, orientation: initialOrientation });
 
-    // Add Cesium OSM Buildings layer
-    const buildingTileset = await Cesium.createOsmBuildingsAsync();
-    viewer.scene.primitives.add(buildingTileset);
+    // Add OSM buildings
+    (async () => {
+      const buildings = await Cesium.createOsmBuildingsAsync();
+      viewer.scene.primitives.add(buildings);
+    })();
 
-    // Enable sunlight lighting and shadows for terrain relief
+    // Lighting & shadows
     viewer.scene.globe.enableLighting = true;
     viewer.scene.globe.depthTestAgainstTerrain = true;
     viewer.scene.globe.shadows = Cesium.ShadowMode.ENABLED;
     viewer.shadowMap.enabled = true;
     viewer.shadowMap.maximumDistance = 500000.0;
+
+    // Control handlers
+    // Pan distance in meters
+// Pan and zoom distance in meters
+const panStep = 500;
+const zoomStep = 500;
+
+// Zoom In (forward)
+document.getElementById('zoomIn').onclick = () =>
+  viewer.camera.moveForward(zoomStep);
+
+// Zoom Out (backward)
+document.getElementById('zoomOut').onclick = () =>
+  viewer.camera.moveBackward(zoomStep);
+
+// Pan East (right)
+document.getElementById('east').onclick = () =>
+  viewer.camera.moveRight(panStep);
+
+// Pan West (left)
+document.getElementById('west').onclick = () =>
+  viewer.camera.moveLeft(panStep);
+
+// Pan North: rotate right vector 90° CCW in horizontal plane
+document.getElementById('north').onclick = () => {
+  const right = viewer.camera.right;                 // camera’s right vector
+  const northVec = Cesium.Cartesian3.cross(          // world up × right = forward-looking north
+    Cesium.Cartesian3.UNIT_Z,
+    right,
+    new Cesium.Cartesian3()
+  );
+  viewer.camera.move(northVec, panStep);
+};
+
+// Pan South: invert northVec
+document.getElementById('south').onclick = () => {
+  const right = viewer.camera.right;
+  const southVec = Cesium.Cartesian3.cross(
+    right,
+    Cesium.Cartesian3.UNIT_Z,
+    new Cesium.Cartesian3()
+  );
+  viewer.camera.move(southVec, panStep);
+};
+document.getElementById('reset').onclick = () =>
+  viewer.camera.flyTo({
+    destination: initialPosition,
+    orientation: initialOrientation,
+    
+  });
   </script>
 </body>
 </html>
