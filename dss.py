@@ -5,7 +5,7 @@
 #   any other?
 
 
-#i am gonna assume that krish is goona add the fra claim by the time i make this so i am jsut geeting the data from taht db
+
 
 import requests
 import sqlite3
