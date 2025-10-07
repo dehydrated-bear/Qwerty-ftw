@@ -158,7 +158,6 @@ class AddClaim(Resource):
         }, 201
 
 class GetClaims(Resource):
-    @jwt_required()
     def get(self):
         claims = FRAClaim.query.all()
         result = []
@@ -188,7 +187,6 @@ class GetClaims(Resource):
 # --- DSS Endpoints ---
 # --- DSS Endpoints ---
 class LULC(Resource):
-    @jwt_required()
     def get(self, distcode="0831"):
         DISTRICT_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new token
         year = request.args.get("year", "1112")
@@ -196,14 +194,12 @@ class LULC(Resource):
         return jsonify(data)
 
 class DistrictClaims(Resource):
-    @jwt_required()
     def get(self, district):
         db_path = Path("instance/fra.db")
         claims = get_claims_for_district(db_path, district)
         return jsonify(claims)
 
 class ClaimEligibility(Resource):
-    @jwt_required()
     def get(self, claim_id):
         db_path = Path("instance/fra.db")
         district = request.args.get("district", "बारां")
@@ -218,7 +214,6 @@ class ClaimEligibility(Resource):
         return jsonify(eligibility)
 
 class DistrictEligibilitySummary(Resource):
-    @jwt_required()
     def get(self, district):
         db_path = Path("instance/fra.db")
         DISTRICT_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new token
@@ -228,7 +223,6 @@ class DistrictEligibilitySummary(Resource):
         return jsonify(summary)
 
 class AOILULC(Resource):
-    @jwt_required()
     def post(self):
         data = request.get_json()
         geom = data.get("geom")
@@ -292,5 +286,4 @@ api.add_resource(AOILULC, "/lulc/aoi")
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    print("yes")
-    socketio.run(app, host="0.0.0.0", port=5000, debug=True)
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True, allow_unsafe_werkzeug=True)
