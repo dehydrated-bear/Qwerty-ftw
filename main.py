@@ -139,21 +139,47 @@ class Login(Resource):
 
 # --- Claim Resources ---
 class AddClaim(Resource):
-    @jwt_required()
     def post(self):
         data = request.get_json()
-        claim = FRAClaim(**data)
+
+        # Create a new FRAClaim object (source_file can be optional)
+        claim = FRAClaim(
+            source_file=data.get("source_file"),   # optional
+            holder_id=data.get("holder_id"),
+            address=data.get("address"),
+            village_details=data.get("village_details"),
+            khasara_no=data.get("khasara_no"),
+            land_area=data.get("land_area"),
+            purpose=data.get("purpose"),
+            caste_status=data.get("caste_status"),
+            forest_block_name=data.get("forest_block_name"),
+            compartment_no=data.get("compartment_no"),
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+        )
+
         db.session.add(claim)
         db.session.commit()
+
         return {
             "msg": "FRA Claim added successfully",
             "claim": {
                 "id": claim.id,
+                "source_file": claim.source_file,
                 "holder_id": claim.holder_id,
                 "address": claim.address,
-                "purpose": claim.purpose,
+                "village_details": claim.village_details,
+                "khasara_no": claim.khasara_no,
                 "land_area": claim.land_area,
-                "caste_status": claim.caste_status
+                "purpose": claim.purpose,
+                "caste_status": claim.caste_status,
+                "forest_block_name": claim.forest_block_name,
+                "compartment_no": claim.compartment_no,
+                "latitude": claim.latitude,
+                "longitude": claim.longitude,
+                "approved": claim.approved,  # will be False by default
+                "created_at": claim.created_at,
+                "updated_at": claim.updated_at
             }
         }, 201
 
