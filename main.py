@@ -101,7 +101,16 @@ class FRAClaim(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# --- Helper ---
+
+class ClaimSource(db.Model):
+    __tablename__ = "claim_sources"
+
+    id = db.Column(db.Integer, primary_key=True)
+    source_file = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+
 def get_user_model(role):
     return {"dlc": DLC, "sdlc": SDLC, "gram_sabha": GRAM_SABHA}.get(role)
 
@@ -137,14 +146,35 @@ class Login(Resource):
         token = create_access_token(identity=user.email, additional_claims={"role": role})
         return {"access_token": token}, 200
 
-# --- Claim Resources ---
+from sqlalchemy import func
+
+def next_claim_id():
+    """Find the next available claim_id shared across FRAClaim and ClaimSource."""
+    fra_max = db.session.query(func.max(FRAClaim.id)).scalar() or 0
+    src_max = db.session.query(func.max(ClaimSource.id)).scalar() or 0
+    return max(fra_max, src_max) + 1
+
+
 class AddClaim(Resource):
     def post(self):
         data = request.get_json()
 
-        # Create a new FRAClaim object (source_file can be optional)
+        # Generate next shared ID
+        new_id = next_claim_id()
+
+        if data.get("source_file"):
+            claim = ClaimSource(id=new_id, source_file=data.get("source_file"))
+            db.session.add(claim)
+            db.session.commit()
+            return {
+                "msg": "Claim source added successfully",
+                "id": claim.id
+            }, 201
+
+
         claim = FRAClaim(
-            source_file=data.get("source_file"),   # optional
+            id=new_id,
+            source_file=data.get("source_file"),
             holder_id=data.get("holder_id"),
             address=data.get("address"),
             village_details=data.get("village_details"),
@@ -177,12 +207,11 @@ class AddClaim(Resource):
                 "compartment_no": claim.compartment_no,
                 "latitude": claim.latitude,
                 "longitude": claim.longitude,
-                "approved": claim.approved,  # will be False by default
-                "created_at": claim.created_at,
-                "updated_at": claim.updated_at
+                "approved": claim.approved,
+                "created_at": claim.created_at.isoformat() ,
+                "updated_at": claim.updated_at.isoformat() 
             }
         }, 201
-
 class GetClaims(Resource):
     def get(self):
         claims = FRAClaim.query.all()
