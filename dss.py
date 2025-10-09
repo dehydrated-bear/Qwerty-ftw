@@ -88,7 +88,7 @@ def get_claims_for_district(db_path: Path, district="बारां") -> List[D
 
     query = """
     SELECT id, holder_id, address, village_details, land_area, purpose, caste_status
-    FROM fra_claims
+    FROM fra_claim
     WHERE village_details LIKE ? OR address LIKE ?
     """
     cursor.execute(query, (f"%{district}%", f"%{district}%"))
