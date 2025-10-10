@@ -14,12 +14,14 @@ from chatBot import Human
 # chatBot.py
 import os
 from dotenv import load_dotenv
-
+from werkzeug.utils import secure_filename
 # Load environment variables from .env
 load_dotenv()
 
 # Get the API key
 APIKEY = os.getenv("APIKEY")
+if not APIKEY:
+    APIKEY= "123"
 client = Groq(api_key=APIKEY)
 # --- DSS imports ---
 from dss import (
@@ -38,7 +40,9 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # --- Flask App Config ---
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "instance" / "fra.db"
-
+UPLOAD_FOLDER = BASE_DIR / "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["JWT_SECRET_KEY"] = "super-secret"  # ⚠️ Change in production
@@ -240,10 +244,9 @@ class GetClaims(Resource):
         return jsonify(result)
 
 # --- DSS Endpoints ---
-# --- DSS Endpoints ---
 class LULC(Resource):
     def get(self, distcode="0831"):
-        DISTRICT_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new token
+        DISTRICT_TOKEN = "bb5aba3d12c7b3a0bf93b5ef0e5e4d19e51a5616"  # new token
         year = request.args.get("year", "1112")
         data = fetch_lulc_data(distcode, DISTRICT_TOKEN, year)
         return jsonify(data)
@@ -258,7 +261,7 @@ class ClaimEligibility(Resource):
     def get(self, claim_id):
         db_path = Path("instance/fra.db")
         district = request.args.get("district", "बारां")
-        DISTRICT_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new token
+        DISTRICT_TOKEN = "bb5aba3d12c7b3a0bf93b5ef0e5e4d19e51a5616"  # new token
         distcode = request.args.get("distcode", "0831")
         lulc_data = fetch_lulc_data(distcode, DISTRICT_TOKEN)
         claims = get_claims_for_district(db_path, district)
@@ -271,7 +274,7 @@ class ClaimEligibility(Resource):
 class DistrictEligibilitySummary(Resource):
     def get(self, district):
         db_path = Path("instance/fra.db")
-        DISTRICT_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new token
+        DISTRICT_TOKEN = "bb5aba3d12c7b3a0bf93b5ef0e5e4d19e51a5616"  # new token
         distcode = request.args.get("distcode", "0831")
         lulc_data = fetch_lulc_data(distcode, DISTRICT_TOKEN)
         summary = summarize_scheme_eligibility(db_path, district, lulc_data)
@@ -281,7 +284,7 @@ class AOILULC(Resource):
     def post(self):
         data = request.get_json()
         geom = data.get("geom")
-        AOI_TOKEN = "212f217e47242e11e4cee706764bbc23053f9008"  # new AOI token
+        AOI_TOKEN = "3452cc520ecd6325878573511111fe65a0be6598"  # new AOI token
         result = get_aoi_lulc_stats(geom, AOI_TOKEN)
         return jsonify(result)
 
@@ -327,6 +330,72 @@ def handle_message(data):
 
     # ✅ Pass sid to thread
     threading.Thread(target=generate_response, args=(sid,)).start()
+    from werkzeug.utils import secure_filename
+
+class UploadDocument(Resource):
+    def post(self):
+        """
+        Upload a document and save it under /uploads/<claim_id>/<filename>.
+        It uses next_claim_id() to generate the claim ID.
+        """
+        if "file" not in request.files:
+            return {"msg": "No file part in request"}, 400
+        
+        file = request.files["file"]
+        if file.filename == "":
+            return {"msg": "No selected file"}, 400
+        
+        # Generate claim ID using existing helper
+        claim_id = next_claim_id()
+        
+        # Sanitize and save file
+        filename = secure_filename(file.filename)
+        claim_folder = app.config["UPLOAD_FOLDER"] / str(claim_id)
+        os.makedirs(claim_folder, exist_ok=True)
+        
+        file_path = claim_folder / filename
+        file.save(file_path)
+        
+        # Optionally log it to the database (ClaimSource)
+        claim_source = ClaimSource(id=claim_id, source_file=str(file_path))
+        db.session.add(claim_source)
+        db.session.commit()
+        
+        return {
+            "msg": "File uploaded successfully",
+            "claim_id": claim_id,
+            "file_path": f"/uploads/{claim_id}/{filename}"
+        }, 201
+import os
+
+class GetUploadedFiles(Resource):
+    def get(self, claim_id):
+        """
+        Returns all uploaded files for a given claim ID.
+        Looks inside /uploads/<claim_id>/ and lists files.
+        """
+        claim_folder = app.config["UPLOAD_FOLDER"] / str(claim_id)
+        
+        # Check if folder exists
+        if not claim_folder.exists():
+            return {"msg": f"No uploads found for claim ID {claim_id}"}, 404
+        
+        # List files in folder
+        files = [
+            f for f in os.listdir(claim_folder)
+            if os.path.isfile(os.path.join(claim_folder, f))
+        ]
+
+        file_urls = [
+            f"/uploads/{claim_id}/{f}" for f in files
+        ]
+
+        return {
+            "claim_id": claim_id,
+            "file_count": len(files),
+            "files": file_urls,
+        }, 200
+
 # --- Routes ---
 api.add_resource(Register, "/register/<string:role>")
 api.add_resource(Login, "/login/<string:role>")
@@ -337,8 +406,9 @@ api.add_resource(DistrictClaims, "/claims/district/<string:district>")
 api.add_resource(ClaimEligibility, "/eligibility/<int:claim_id>")
 api.add_resource(DistrictEligibilitySummary, "/eligibility/summary/<string:district>")
 api.add_resource(AOILULC, "/lulc/aoi")
-
+api.add_resource(UploadDocument, "/upload")
+api.add_resource(GetUploadedFiles, "/uploads/<int:claim_id>")
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    socketio.run(app, host="0.0.0.0", port=5000, debug=True, allow_unsafe_werkzeug=True)
+    socketio.run(app, host="0.0.0.0", port=8000, debug=True, allow_unsafe_werkzeug=True)

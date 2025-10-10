@@ -1,20 +1,24 @@
 import requests
 
-# URL of your Flask endpoint
-url = "http://127.0.0.1:5000/claims"
+# --- Step 1: Upload a document ---
+upload_url = "http://localhost:8000/upload"
+file_path = "hive.pdf"  # must exist locally
 
-# Dummy data for ClaimSource only
-data = {
-    "source_file": "uploads/source_docs/claim_dummy.pdf"
-}
+with open(file_path, "rb") as f:
+    files = {"file": (file_path, f, "application/pdf")}
+    response = requests.post(upload_url, files=files)
+print("Status code:", response.status_code)
+print("Response text:", response.text)
+print("Upload status:", response.status_code)
+print("Upload response:", response.json())
 
-try:
-    response = requests.post(url, json=data)
-    response.raise_for_status()  # Raise an error for 4xx/5xx responses
-    print("Response status:", response.status_code)
-    print("Response JSON:", response.json())
-except requests.exceptions.RequestException as e:
-    print("Request failed:", e)
-except ValueError:
-    # This handles JSON decode errors
-    print("Response is not valid JSON:", response.text)
+if response.status_code != 201:
+    exit()
+claim_id = response.json().get("claim_id")
+
+# --- Step 2: Get all uploaded files for that claim ---
+get_url = f"http://localhost:8000/uploads/{claim_id}"
+get_resp = requests.get(get_url)
+
+print("\nList status:", get_resp.status_code)
+print("List response:", get_resp.json())

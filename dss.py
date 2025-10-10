@@ -221,7 +221,7 @@ def get_aoi_lulc_stats(geom: str, token: str) -> Dict[str, Dict[str, Any]]:
 # --- Example usage ---
 if __name__ == "__main__":
     DB_PATH = Path(__file__).parent / "instance" / "fra.db"
-    TOKEN = "749046fc0b500459645e958b3a80eb86ba75e325"
+    TOKEN = "bb5aba3d12c7b3a0bf93b5ef0e5e4d19e51a5616"
     DISTRICT_CODE = "0831"  # Baran
     DISTRICT_NAME = "बारां"
 
@@ -252,9 +252,9 @@ if __name__ == "__main__":
 
 
 
-    token1 = "212f217e47242e11e4cee706764bbc23053f9008"
+    token1 = "3452cc520ecd6325878573511111fe65a0be6598"
 
-    geom_example = "POLYGON((77.537826049804 18.312927062987,77.539885986327 18.279624755858,77.596190917968 18.295417602538,77.537826049804 18.312927062987))"
+    geom_example = "POLYGON((76.493161 25.111145, 76.493161 25.091145, 76.533161 25.091145, 76.533161 25.111145, 76.493161 25.111145))"
 
     result = get_aoi_lulc_stats(geom_example, token1)
     from pprint import pprint
