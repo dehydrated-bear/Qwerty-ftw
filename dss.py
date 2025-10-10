@@ -1,19 +1,87 @@
-# the data that we are using in this bitch 
-#   the lulc data 
-#   data from the person and his family etc 
-#   land water /other bullshit
-#   any other?
-
-
-
-
 import requests
 import sqlite3
 from typing import Any, Dict, List
 from pathlib import Path
 import re
 
+# ----------------------------------
+# RJ_LGEOM groundwater property fetcher
+def get_lgeom_properties(x, y, srs="EPSG:32643", buffer_size=500):
+    """
+    Query RJ_LGEOM layer for groundwater properties at a given coordinate.
+    """
+    minx = x - buffer_size
+    maxx = x + buffer_size
+    miny = y - buffer_size
+    maxy = y + buffer_size
 
+    bbox = f"{minx},{miny},{maxx},{maxy}"
+
+    url = (
+        "https://bhuvan-vec1.nrsc.gov.in/bhuvan/gw/wms?"
+        "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetFeatureInfo&"
+        "LAYERS=gw:RJ_LGEOM&QUERY_LAYERS=gw:RJ_LGEOM&STYLES=&"
+        f"SRS={srs}&BBOX={bbox}&WIDTH=101&HEIGHT=101&"
+        "X=50&Y=50&INFO_FORMAT=application/json&FEATURE_COUNT=1"
+    )
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if not data.get("features"):
+            return {"error": "No feature found at this coordinate"}
+
+        feature = data["features"][0]
+        props = feature.get("properties", {})
+
+        return {
+            "LG_1": props.get("LG_1"),
+            "LG_2": props.get("LG_2"),
+            "ALNUM_CODE": props.get("ALNUM_CODE"),
+            "SYM_CODE": props.get("SYM_CODE"),
+            "feature_id": feature.get("id")
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+def parse_lgeom_properties(props):
+    """
+    Convert RJ_LGEOM properties into meaningful groundwater potential info.
+    """
+    if "error" in props:
+        return {"error": props["error"]}
+
+    lg1 = props.get("LG_1", "")
+    lg2 = props.get("LG_2", "")
+    alnum_code = props.get("ALNUM_CODE", "")
+    sym_code = props.get("SYM_CODE", "")
+
+    # Simple inference rules
+    potential = "Unknown"
+    if "Alluvium" in lg1 or "Alluvial" in lg1:
+        potential = "High"
+    elif "Shallow Basement" in lg2 or "Basement" in lg2:
+        potential = "Low"
+    elif "Sandstone" in lg1:
+        potential = "Moderate"
+    elif "Limestone" in lg1:
+        potential = "High"
+    else:
+        potential = "Moderate"
+
+    return {
+        "LG_1": lg1,
+        "LG_2": lg2,
+        "ALNUM_CODE": alnum_code,
+        "SYM_CODE": sym_code,
+        "Groundwater_Potential": potential,
+        "Interpretation": f"The geological formation suggests {potential} groundwater availability."
+    }
+
+# ----------------------------------
 # Map LULC codes to meaningful names
 LULC_CODE_MAP = {
     "l01": "Builtup, Urban",
@@ -42,7 +110,6 @@ LULC_CODE_MAP = {
     "l24": "Snow and Glacier",
 }
 
-
 def fetch_lulc_data(distcode: str, token: str, year: str = "1112") -> Dict[str, float]:
     """
     Fetch LULC data for given district.
@@ -55,7 +122,6 @@ def fetch_lulc_data(distcode: str, token: str, year: str = "1112") -> Dict[str, 
         resp.raise_for_status()
         data = resp.json()
 
-        # Normalize values
         lulc_areas = {}
         for code in LULC_CODE_MAP.keys():
             val = data.get(code, "0")
@@ -68,16 +134,12 @@ def fetch_lulc_data(distcode: str, token: str, year: str = "1112") -> Dict[str, 
         print(f"[ERROR] LULC fetch failed: {e}")
         return {code: 0.0 for code in LULC_CODE_MAP.keys()}
 
-
 def parse_land_area(area_str: str) -> float:
     """Convert '0.48 है.' → 0.48"""
     if not area_str:
         return 0.0
     match = re.search(r"[\d.]+", str(area_str))
     return float(match.group()) if match else 0.0
-
-
-# hardcoded byatch as it is just bara baby
 
 def get_claims_for_district(db_path: Path, district="बारां") -> List[Dict[str, Any]]:
     """
@@ -105,10 +167,12 @@ def get_claims_for_district(db_path: Path, district="बारां") -> List[D
             "land_area": parse_land_area(r[4]),  # convert to float
             "purpose": (r[5] or "").replace("\n", "").strip(),
             "caste_status": (r[6] or "").replace("\n", "").strip(),
+
+            # If you have UTM coordinates, add here:
+            # "utm_x": ...,
+            # "utm_y": ...,
         })
     return claims
-
-#checking the scheme for a one particular person , or instance
 
 def check_scheme_eligibility(claim: Dict[str, Any], lulc_data: Dict[str, float]) -> Dict[str, bool]:
     eligibility = {
@@ -146,9 +210,6 @@ def check_scheme_eligibility(claim: Dict[str, Any], lulc_data: Dict[str, float])
 
     return eligibility
 
-
-#for the summation of all the schems in a area 
-
 def summarize_scheme_eligibility(db_path: Path, district: str, lulc_data: Dict[str, float]) -> Dict[str, int]:
     """
     Summarize how many claims in a district are eligible for each scheme.
@@ -172,23 +233,10 @@ def summarize_scheme_eligibility(db_path: Path, district: str, lulc_data: Dict[s
 
     return summary
 
-
-
-#function for the polygon mapping for the area and stuff
-
-#!!!!!!!!! gives output in km square , not percentage
-
 def get_aoi_lulc_stats(geom: str, token: str) -> Dict[str, Dict[str, Any]]:
     """
-    Fetches LULC stats for an Area of Interest (AOI) from Bhuvan API
-    and returns a clean, readable state-wise breakdown.
-    
-    Args:
-        geom: WKT polygon string representing AOI.
-        token: API token.
-        
-    Returns:
-        Dictionary with state-wise LULC breakdown and mapped names.
+    Fetches LULC stats for Area of Interest (AOI) from Bhuvan API.
+    Returns a clean, readable state-wise breakdown.
     """
     url = "https://bhuvan-app1.nrsc.gov.in/api/lulc/curl_aoi.php"
     params = {"geom": geom, "token": token}
@@ -210,14 +258,13 @@ def get_aoi_lulc_stats(geom: str, token: str) -> Dict[str, Dict[str, Any]]:
         for code, area in state_data.items():
             if code == "State":
                 continue
-            clean_code = code.replace("'", "").strip()  # Remove quotes from keys
+            clean_code = code.replace("'", "").strip()
             land_type = LULC_CODE_MAP.get(clean_code, clean_code)
             processed_data[state_name][land_type] = float(area)
 
     return processed_data
 
-
-
+# -------------------------------
 # --- Example usage ---
 if __name__ == "__main__":
     DB_PATH = Path(__file__).parent / "instance" / "fra.db"
@@ -233,8 +280,6 @@ if __name__ == "__main__":
     lulc_data = fetch_lulc_data(DISTRICT_CODE, TOKEN)
     print(lulc_data)
 
-    
-
     print("Summarizing scheme eligibility…")
     summary = summarize_scheme_eligibility(DB_PATH, DISTRICT_NAME, lulc_data)
 
@@ -242,20 +287,27 @@ if __name__ == "__main__":
     for scheme, count in summary.items():
         print(f"{scheme}: {count}")
 
-    
-
+    # --- Per-claim display with groundwater info ---
     for claim in claims:
         eligibility = check_scheme_eligibility(claim, lulc_data)
         print(f"\n📄 Claim ID: {claim['id']} | Holder: {claim['holder_id']}")
         print("Purpose:", claim["purpose"], "| Caste:", claim["caste_status"], "| Land:", claim["land_area"])
         print("Scheme Eligibility:", eligibility)
 
+        # Groundwater info lookup for claims with UTM coordinates
+        # If claim dict has 'utm_x' and 'utm_y' fields, use them; else skip
+        x = claim.get("utm_x")
+        y = claim.get("utm_y")
+        if x and y:
+            lgeom_props = get_lgeom_properties(x, y)
+            lgeom_info = parse_lgeom_properties(lgeom_props)
+            print("Groundwater Info:", lgeom_info.get("Interpretation", lgeom_info.get("error")))
+        else:
+            print("Groundwater Info: No coordinates for groundwater lookup.")
 
-
+    # --- AOI example ---
     token1 = "3452cc520ecd6325878573511111fe65a0be6598"
-
     geom_example = "POLYGON((76.493161 25.111145, 76.493161 25.091145, 76.533161 25.091145, 76.533161 25.111145, 76.493161 25.111145))"
-
     result = get_aoi_lulc_stats(geom_example, token1)
     from pprint import pprint
     pprint(result)
