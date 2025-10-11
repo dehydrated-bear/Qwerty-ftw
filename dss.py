@@ -304,7 +304,7 @@ if __name__ == "__main__":
             print("Groundwater Info:", lgeom_info.get("Interpretation", lgeom_info.get("error")))
         else:
             print("Groundwater Info: No coordinates for groundwater lookup.")
-
+        break
     # --- AOI example ---
     token1 = "3452cc520ecd6325878573511111fe65a0be6598"
     geom_example = "POLYGON((76.493161 25.111145, 76.493161 25.091145, 76.533161 25.091145, 76.533161 25.111145, 76.493161 25.111145))"

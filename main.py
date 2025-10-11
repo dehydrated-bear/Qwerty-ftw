@@ -447,6 +447,8 @@ class LGeom(Resource):
     def get(self):
         try:
             x, y, srs, buffer_size = self._parse_params()
+            print(x,y,srs,buffer_size)
+            
         except ValueError as e:
             return {"error": str(e)}, 400
 
