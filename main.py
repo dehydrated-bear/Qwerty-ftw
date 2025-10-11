@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 # Load environment variables from .env
 load_dotenv()
-
+import utm
 # Get the API key
 APIKEY = os.getenv("APIKEY")
 if not APIKEY:
@@ -31,7 +31,7 @@ from dss import (
     summarize_scheme_eligibility,
     get_aoi_lulc_stats
 )
-from dss import get_lgeom_properties
+from dss import get_lgeom_properties,parse_lgeom_properties
 
 # --- Flask App Config ---
 app = Flask(__name__)
@@ -415,61 +415,91 @@ class LGeom(Resource):
     """
     Lookup RJ_LGEOM groundwater properties for a coordinate.
 
-    GET /lgeom?x=<float>&y=<float>&srs=<str>&buffer_size=<int>
-    POST /lgeom  { "x": <float>, "y": <float>, "srs": "EPSG:xxxx", "buffer_size": 500 }
+    GET /lgeom?x=<float>&y=<float>
+    POST /lgeom  { "x": <float>, "y": <float> }
 
     Returns JSON from `get_lgeom_properties` or an error message.
     """
+
+    # Default buffer size (fixed for prototype)
+    DEFAULT_BUFFER_SIZE = 500
+
+    def _latlon_to_xy_epsg(self, lat, lon):
+        """
+        Convert latitude and longitude to UTM coordinates and determine the correct EPSG code.
+        Northern hemisphere: EPSG:326XX
+        Southern hemisphere: EPSG:327XX
+        """
+
+        # Convert lat/lon to UTM
+        easting, northing, zone_number, zone_letter = utm.from_latlon(lat, lon)
+
+        # Determine correct EPSG code
+        if zone_letter >= 'N':
+            epsg_code = f"EPSG:{32600 + zone_number}"  # Northern hemisphere
+        else:
+            epsg_code = f"EPSG:{32700 + zone_number}"  # Southern hemisphere
+
+        return easting, northing, epsg_code
+
     def _parse_params(self):
-        # Accept both query params (GET) and JSON body (POST)
+        """
+        Parse input parameters from GET or POST and return:
+        x, y, srs, buffer_size
+        """
         if request.method == "GET":
-            x = request.args.get("x")
-            y = request.args.get("y")
-            srs = request.args.get("srs", "EPSG:32643")
-            buffer_size = request.args.get("buffer_size", 500)
+            lat_str = request.args.get("x")
+            lon_str = request.args.get("y")
         else:
             data = request.get_json(silent=True) or {}
-            x = data.get("x")
-            y = data.get("y")
-            srs = data.get("srs", "EPSG:32643")
-            buffer_size = data.get("buffer_size", 500)
+            lat_str = data.get("y")
+            lon_str = data.get("x")
+        print(lat_str,lon_str)
+        # Validate lat/lon
+        if lat_str is None or lon_str is None:
+            raise ValueError("Missing parameters 'x' or 'y'")
 
-        # Validate numeric parameters
         try:
-            x = float(x)
-            y = float(y)
-            buffer_size = int(buffer_size)
+            lat = float(lat_str)
+            lon = float(lon_str)
         except Exception:
-            raise ValueError("Invalid or missing numeric parameters 'x', 'y', or 'buffer_size'.")
+            raise ValueError("Invalid numeric values for 'x' or 'y'")
+
+        # Convert to UTM and determine EPSG automatically
+        x, y, srs = self._latlon_to_xy_epsg(lat, lon)
+
+        # Use fixed buffer size
+        buffer_size = self.DEFAULT_BUFFER_SIZE
 
         return x, y, srs, buffer_size
 
     def get(self):
         try:
             x, y, srs, buffer_size = self._parse_params()
-            print(x,y,srs,buffer_size)
-
+            print(f"Parsed GET params: x={x}, y={y}, srs={srs}, buffer_size={buffer_size}")
         except ValueError as e:
             return {"error": str(e)}, 400
 
         try:
-            result = get_lgeom_properties(x, y, srs=srs, buffer_size=buffer_size)
+            result = get_lgeom_properties(x, y, buffer_size=buffer_size)
             return jsonify(result)
         except Exception as e:
             return {"error": str(e)}, 500
 
     def post(self):
-        # POST uses same parsing and behavior
         try:
             x, y, srs, buffer_size = self._parse_params()
+            print(f"Parsed POST params: x={x}, y={y}, srs={srs}, buffer_size={buffer_size}")
         except ValueError as e:
             return {"error": str(e)}, 400
 
         try:
-            result = get_lgeom_properties(x, y, srs=srs, buffer_size=buffer_size)
-            return jsonify(result)
+            result = get_lgeom_properties(x, y,srs = srs, buffer_size=buffer_size)
+            final = parse_lgeom_properties(result)
+            return jsonify(final)
         except Exception as e:
             return {"error": str(e)}, 500
+        
 
 
 api.add_resource(LGeom, "/lgeom")
