@@ -247,7 +247,7 @@ class GetClaims(Resource):
 # --- DSS Endpoints ---
 class LULC(Resource):
     def get(self, distcode="0831"):
-        DISTRICT_TOKEN = "bb5aba3d12c7b3a0bf93b5ef0e5e4d19e51a5616"  # new token
+        DISTRICT_TOKEN = "1bf4ced80c08d4eeb1b723c189fa4d676b2bea47"  # new token
         year = request.args.get("year", "1112")
         data = fetch_lulc_data(distcode, DISTRICT_TOKEN, year)
         return jsonify(data)
@@ -262,7 +262,7 @@ class ClaimEligibility(Resource):
     def get(self, claim_id):
         db_path = Path("instance/fra.db")
         district = request.args.get("district", "बारां")
-        DISTRICT_TOKEN = "bb5aba3d12c7b3a0bf93b5ef0e5e4d19e51a5616"  # new token
+        DISTRICT_TOKEN = "1bf4ced80c08d4eeb1b723c189fa4d676b2bea47"  # new token
         distcode = request.args.get("distcode", "0831")
         lulc_data = fetch_lulc_data(distcode, DISTRICT_TOKEN)
         claims = get_claims_for_district(db_path, district)
@@ -275,7 +275,7 @@ class ClaimEligibility(Resource):
 class DistrictEligibilitySummary(Resource):
     def get(self, district):
         db_path = Path("instance/fra.db")
-        DISTRICT_TOKEN = "bb5aba3d12c7b3a0bf93b5ef0e5e4d19e51a5616"  # new token
+        DISTRICT_TOKEN = "1bf4ced80c08d4eeb1b723c189fa4d676b2bea47"  # new token
         distcode = request.args.get("distcode", "0831")
         lulc_data = fetch_lulc_data(distcode, DISTRICT_TOKEN)
         summary = summarize_scheme_eligibility(db_path, district, lulc_data)
@@ -285,7 +285,7 @@ class AOILULC(Resource):
     def post(self):
         data = request.get_json()
         geom = data.get("geom")
-        AOI_TOKEN = "3452cc520ecd6325878573511111fe65a0be6598"  # new AOI token
+        AOI_TOKEN = "62ebc9b6ae320968835b45823c88b76f6d377f97"  # new AOI token
         result = get_aoi_lulc_stats(geom, AOI_TOKEN)
         return jsonify(result)
 
@@ -448,7 +448,7 @@ class LGeom(Resource):
         try:
             x, y, srs, buffer_size = self._parse_params()
             print(x,y,srs,buffer_size)
-            
+
         except ValueError as e:
             return {"error": str(e)}, 400
 
