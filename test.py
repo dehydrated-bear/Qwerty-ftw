@@ -1,24 +1,30 @@
 import requests
 
-# --- Step 1: Upload a document ---
-upload_url = "http://localhost:8000/upload"
-file_path = "hive.pdf"  # must exist locally
+BASE_URL = "http://127.0.0.1:5000/lgeom"  # or your deployed URL
 
-with open(file_path, "rb") as f:
-    files = {"file": (file_path, f, "application/pdf")}
-    response = requests.post(upload_url, files=files)
-print("Status code:", response.status_code)
-print("Response text:", response.text)
-print("Upload status:", response.status_code)
-print("Upload response:", response.json())
+# ---------- TEST GET ----------
+params = {
+    "x": 78.1234,
+    "y": 23.5678,
+    "srs": "EPSG:32643",
+    "buffer_size": 500
+}
 
-if response.status_code != 201:
-    exit()
-claim_id = response.json().get("claim_id")
+print("Testing GET /lgeom ...")
+response = requests.get(BASE_URL, params=params)
+print("Status:", response.status_code)
+print("Response:", response.json())
 
-# --- Step 2: Get all uploaded files for that claim ---
-get_url = f"http://localhost:8000/uploads/{claim_id}"
-get_resp = requests.get(get_url)
 
-print("\nList status:", get_resp.status_code)
-print("List response:", get_resp.json())
+# ---------- TEST POST ----------
+payload = {
+    "x": 78.1234,
+    "y": 23.5678,
+    "srs": "EPSG:32643",
+    "buffer_size": 500
+}
+
+print("\nTesting POST /lgeom ...")
+response = requests.post(BASE_URL, json=payload)
+print("Status:", response.status_code)
+print("Response:", response.json())
