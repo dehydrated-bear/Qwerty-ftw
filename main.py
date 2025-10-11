@@ -31,6 +31,7 @@ from dss import (
     summarize_scheme_eligibility,
     get_aoi_lulc_stats
 )
+from dss import get_lgeom_properties
 
 # --- Flask App Config ---
 app = Flask(__name__)
@@ -408,6 +409,68 @@ api.add_resource(DistrictEligibilitySummary, "/eligibility/summary/<string:distr
 api.add_resource(AOILULC, "/lulc/aoi")
 api.add_resource(UploadDocument, "/upload")
 api.add_resource(GetUploadedFiles, "/uploads/<int:claim_id>")
+
+
+class LGeom(Resource):
+    """
+    Lookup RJ_LGEOM groundwater properties for a coordinate.
+
+    GET /lgeom?x=<float>&y=<float>&srs=<str>&buffer_size=<int>
+    POST /lgeom  { "x": <float>, "y": <float>, "srs": "EPSG:xxxx", "buffer_size": 500 }
+
+    Returns JSON from `get_lgeom_properties` or an error message.
+    """
+    def _parse_params(self):
+        # Accept both query params (GET) and JSON body (POST)
+        if request.method == "GET":
+            x = request.args.get("x")
+            y = request.args.get("y")
+            srs = request.args.get("srs", "EPSG:32643")
+            buffer_size = request.args.get("buffer_size", 500)
+        else:
+            data = request.get_json(silent=True) or {}
+            x = data.get("x")
+            y = data.get("y")
+            srs = data.get("srs", "EPSG:32643")
+            buffer_size = data.get("buffer_size", 500)
+
+        # Validate numeric parameters
+        try:
+            x = float(x)
+            y = float(y)
+            buffer_size = int(buffer_size)
+        except Exception:
+            raise ValueError("Invalid or missing numeric parameters 'x', 'y', or 'buffer_size'.")
+
+        return x, y, srs, buffer_size
+
+    def get(self):
+        try:
+            x, y, srs, buffer_size = self._parse_params()
+        except ValueError as e:
+            return {"error": str(e)}, 400
+
+        try:
+            result = get_lgeom_properties(x, y, srs=srs, buffer_size=buffer_size)
+            return jsonify(result)
+        except Exception as e:
+            return {"error": str(e)}, 500
+
+    def post(self):
+        # POST uses same parsing and behavior
+        try:
+            x, y, srs, buffer_size = self._parse_params()
+        except ValueError as e:
+            return {"error": str(e)}, 400
+
+        try:
+            result = get_lgeom_properties(x, y, srs=srs, buffer_size=buffer_size)
+            return jsonify(result)
+        except Exception as e:
+            return {"error": str(e)}, 500
+
+
+api.add_resource(LGeom, "/lgeom")
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
